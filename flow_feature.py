@@ -94,7 +94,7 @@ class FlowFeature(enum.Enum):
     idl_avg = ("Idle Mean", "IlAG", True)
     idl_std = ("Idle Std", "IlSD", True)
     idl_max = ("Idle Max", "IlMA", True)
-    idl_min = ("IlMI", "IlMI", True) # Corrected abbreviation based on Java dump
+    idl_min = ("Idle Min", "IlMI", True) # Corrected abbreviation based on Java dump # Corrected abbreviation based on Java dump
     Label = ("Label", "LBL", False)
 
     def __init__(self, name, abbr, is_numeric):
