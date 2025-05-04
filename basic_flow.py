@@ -797,11 +797,18 @@ class BasicFlow:
             return self.fbulkPacketCount_getter() / self.fbulkStateCount_getter()
         return 0.0
 
-    def fAvgBulkRate(self) -> float:
-        if self.fbulkDuration_getter() != 0:
-            # Rate in bytes per second
-            return self.fbulkSizeTotal_getter() / self.fbulkDurationInSecond()
-        return 0.0
+    # Inside the BasicFlow class
+
+    def fAvgBulkRate(self):
+        # Assuming fbulkDurationInSecond() correctly calculates duration in seconds
+        duration_seconds = self.fbulkDuration / 1_000_000.0 # Ensure conversion
+        if duration_seconds == 0:
+            return 0.0 # Return 0 if duration is zero to prevent division by zero
+        return self.fbulkSizeTotal / duration_seconds # Use the attribute directly
+
+    # Add a helper method if you don't have fbulkDurationInSecond():
+    # def fbulkDurationInSecond(self):
+    #     return self.fbulkDuration / 1_000_000.0
 
     def bbulkPacketCount_getter(self) -> int: return self.bbulkPacketCount
     def bbulkStateCount_getter(self) -> int: return self.bbulkStateCount
@@ -821,11 +828,18 @@ class BasicFlow:
             return self.bbulkPacketCount_getter() / self.bbulkStateCount_getter()
         return 0.0
 
-    def bAvgBulkRate(self) -> float:
-        if self.bbulkDuration_getter() != 0:
-            # Rate in bytes per second
-            return self.bbulkSizeTotal_getter() / self.bbulkDurationInSecond()
-        return 0.0
+    # Inside the BasicFlow class
+
+    def bAvgBulkRate(self):
+        # Assuming bbulkDurationInSecond() correctly calculates duration in seconds
+        duration_seconds = self.bbulkDuration / 1_000_000.0 # Ensure conversion
+        if duration_seconds == 0:
+            return 0.0 # Return 0 if duration is zero to prevent division by zero
+        return self.bbulkSizeTotal / duration_seconds # Use the attribute directly
+
+    # Add a helper method if you don't have bbulkDurationInSecond():
+    # def bbulkDurationInSecond(self):
+    #     return self.bbulkDuration / 1_000_000.0
 
 
     # Subflow Feature Getters (read the state variables updated by detectUpdateSubflows)
