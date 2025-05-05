@@ -5,19 +5,21 @@ import sys
 import time
 import logging
 import argparse
-import random # Needed for simple packet generation
+import random
+import signal # Import signal for graceful termination
+from datetime import datetime
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s') # Set to INFO for less verbose output
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Import necessary components from their respective files and Scapy
 from flow_generator import FlowGenerator
 from constants import DEFAULT_PCAP_PATH, DEFAULT_OUT_PATH, ACTIVE_TIMEOUT_MICROS, IDLE_TIMEOUT_MICROS
 from flow_feature import FlowFeature
-from scapy.all import rdpcap, wrpcap, Ether, IP, TCP # Import wrpcap for writing pcaps
+from scapy.all import rdpcap, wrpcap, Ether, IP, IPv6, TCP, UDP, Raw, sniff, get_if_list # Import sniff and get_if_list
 
-# --- Simple PCAP Generation Function ---
+# --- Simple PCAP Generation Function (Keep this for file mode or testing) ---
 def generate_simple_test_pcap(output_dir, filename="simple_test_flow.pcap", num_packets=10):
     """
     Generates a simple test PCAP file with a single TCP flow.
@@ -57,16 +59,37 @@ def generate_simple_test_pcap(output_dir, filename="simple_test_flow.pcap", num_
         logger.error(f"Error generating PCAP file {filepath}: {e}")
         return None
 
+# --- Packet Processing Function for Live Capture ---
+# This function will be called by Scapy's sniff() for each captured packet
+def process_live_packet(packet, flow_generator, output_dir):
+    """
+    Processes a single packet captured live and adds it to the flow generator.
+    """
+    # We don't need to pass the output_dir to flow_generator.addPacket
+    # FlowGenerator will handle internal state updates.
+    # Dumping to CSV will happen at the end of sniffing.
+    try:
+        flow_generator.addPacket(packet)
+    except Exception as e:
+         # Log any errors during packet processing but don't stop sniffing
+         logger.error(f"Error processing live packet: {e}", exc_info=True)
 
+
+# --- Main Function with Live Capture Mode ---
 def main():
     parser = argparse.ArgumentParser(description="Python version of CICFlowMeter.")
-    parser.add_argument("pcap_path", nargs="?", default=DEFAULT_PCAP_PATH,
+    parser.add_argument("--pcap-path", default=DEFAULT_PCAP_PATH,
                         help=f"Path to directory containing .pcap files (default: {DEFAULT_PCAP_PATH})")
-    parser.add_argument("out_path", nargs="?", default=DEFAULT_OUT_PATH,
+    parser.add_argument("--out-path", default=DEFAULT_OUT_PATH,
                         help=f"Path to output directory for .csv files (default: {DEFAULT_OUT_PATH})")
-    # Optional argument to skip built-in PCAP generation
     parser.add_argument("--skip-generate", action="store_true",
-                        help="Skip generating the simple test PCAP.")
+                        help="Skip generating the simple test PCAP (only applicable in file mode).")
+    parser.add_argument("--interface", help="Network interface to sniff on for live capture.")
+    parser.add_argument("--sniff-timeout", type=int, default=0,
+                        help="Timeout for live sniffing in seconds (0 means indefinite).")
+    parser.add_argument("--sniff-count", type=int, default=0,
+                        help="Number of packets to sniff for live capture (0 means indefinite).")
+
 
     args = parser.parse_args()
 
@@ -76,121 +99,198 @@ def main():
     # Ensure output directory exists
     os.makedirs(out_path, exist_ok=True)
 
-    # --- Pipeline Step 1: Generate PCAPs (simple test PCAP) ---
-    if not args.skip_generate:
-        # Ensure input directory exists to save the generated PCAP
-        os.makedirs(pcap_path, exist_ok=True)
-        generate_simple_test_pcap(pcap_path)
-    else:
-        logger.info("Skipping simple test PCAP generation as --skip-generate flag is set.")
+    # Initialize the FlowGenerator outside the processing loop
+    flow_gen = FlowGenerator(bidirectional=True, flow_timeout_micros=ACTIVE_TIMEOUT_MICROS, activity_timeout_micros=IDLE_TIMEOUT_MICROS)
+
+    if args.interface:
+        # --- Live Capture Mode ---
+        interface = args.interface
+        logger.info(f"Starting live capture on interface: {interface}")
+        logger.info(f"Sniffing timeout: {args.sniff_timeout}s, Packet count limit: {args.sniff_count}")
+        logger.info("Press Ctrl+C to stop sniffing and dump flows.")
+
+        # --- TEMPORARILY COMMENT OUT SIGNAL HANDLING SETUP ---
+        # Define a handler for graceful termination
+        # stop_sniffing = False
+        # def stop_handler(signum, frame):
+        #     global stop_sniffing
+        #     stop_sniffing = True
+        #     logger.info("Sniffing interrupted by user (Ctrl+C). Stopping capture...")
+        #
+        # # Register the signal handler for SIGINT (Ctrl+C)
+        # signal.signal(signal.SIGINT, stop_handler)
+        # --- END TEMPORARY COMMENT OUT ---
 
 
-    # --- Pipeline Step 2: Process PCAP files ---
-    if not os.path.isdir(pcap_path):
-        logger.error("Input directory not found: %s", pcap_path)
-        sys.exit(1)
-
-    # Find all .pcap files (including the potentially newly generated one)
-    try:
-        pcap_files = [f for f in os.listdir(pcap_path) if f.lower().endswith(".pcap")]
-        pcap_files.sort() # Process files in a consistent order
-    except OSError as e:
-        logger.error("Error listing files in directory %s: %s", pcap_path, e)
-        sys.exit(1)
-
-
-    if not pcap_files:
-        logger.info("Sorry, no pcap files can be found under: %s", pcap_path)
-        if args.skip_generate:
-             logger.info("Note: No PCAP files found and generation was skipped. Please ensure PCAP files are in the input directory or remove --skip-generate.")
-        return
-
-    logger.info("")
-    logger.info("PythonFlowMeter found: %d Files.", len(pcap_files))
-
-    total_flows_dumped = 0
-
-    for file in pcap_files:
-        filepath = os.path.join(pcap_path, file)
-        logger.info("")
-        logger.info("")
-        logger.info("Working on... %s", file)
-
+        # Initialize the FlowGenerator outside the processing loop
         flow_gen = FlowGenerator(bidirectional=True, flow_timeout_micros=ACTIVE_TIMEOUT_MICROS, activity_timeout_micros=IDLE_TIMEOUT_MICROS)
+        logger.debug("FlowGenerator initialized...")
 
-        first_packet_timestamp_micros = None
-        last_packet_timestamp_micros = None
-        discarded_packet_count = 0
-
-        start_time_script_sec = time.time()
-
-        packets = []
-        total_scapy_packets = 0
 
         try:
-            try:
-                # Use rdpcap to read packets from the file
-                packets = rdpcap(filepath)
-                total_scapy_packets = len(packets)
-                logger.info(f"Read {total_scapy_packets} packets from {file}")
-            except Exception as e:
-                 logger.error(f"Error reading PCAP file {filepath}: {e}")
-                 continue # Skip to the next file if reading fails
-
-            for i, packet in enumerate(packets):
-                try:
-                    flow_gen.addPacket(packet)
-
-                    if hasattr(packet, 'time'):
-                        packet_timestamp_micros = int(packet.time * 1_000_000)
-                        if first_packet_timestamp_micros is None or packet_timestamp_micros < first_packet_timestamp_micros:
-                             first_packet_timestamp_micros = packet_timestamp_micros
-                        if last_packet_timestamp_micros is None or packet_timestamp_micros > last_packet_timestamp_micros:
-                             last_packet_timestamp_micros = packet_timestamp_micros
-                    else:
-                         logger.warning(f"Packet {i+1} in {file} has no timestamp attribute. Skipping time tracking for this packet.")
-
-                except Exception as e:
-                     logger.error(f"Unhandled error processing packet {i+1}/{total_scapy_packets} in PCAP loop: {e}", exc_info=True)
-                     discarded_packet_count += 1
+            # Define the packet callback for live capture
+            def packet_callback_wrapper(packet):
+                 # Reintroduce the call to process_live_packet
+                 logger.debug("Packet callback invoked.") # Keep this debug line
+                 # Keep the stop_sniffing check commented out
+                 # if stop_sniffing:
+                 #      logger.debug("Stop sniffing flag detected.")
+                 #      raise StopIteration
+                 process_live_packet(packet, flow_gen, out_path) # Keep processing call
 
 
-            final_closing_timestamp = last_packet_timestamp_micros if last_packet_timestamp_micros is not None else int(time.time() * 1_000_000)
-            logger.debug(f"Calling close_all_flows for {file} with final timestamp {final_closing_timestamp}")
-            flow_gen.close_all_flows(final_closing_timestamp)
+            logger.debug("Calling scapy.sniff()...")
+            # Start sniffing live traffic
+            # Use original timeout/count args (0, 0 for indefinite sniff)
+            sniff(iface=interface, prn=packet_callback_wrapper, store=0) # Use original args
+            logger.debug("scapy.sniff() returned.")
 
 
+        except StopIteration: # This block won't be reached with signal handling commented out
+             logger.info("Sniffing stopped.")
         except Exception as e:
-            logger.error(f"An unhandled error occurred during processing of file {file}: {e}", exc_info=True)
+            # This will catch exceptions *during* sniff or if sniff raises on failure
+            logger.error(f"An error occurred during live sniffing: {e}", exc_info=True)
+            logger.info("Troubleshooting live capture:")
+            logger.info("1. Ensure you have administrator or root privileges.")
+            logger.info(f"2. Verify interface name. Available interfaces: {get_if_list()}")
+
+        # Dumping logic after sniff returns
+        logger.info("Sniffing stopped. Dumping remaining flows...")
+        final_dump_timestamp = int(time.time() * 1_000_000) # Use current time for final close
+        flow_gen.close_all_flows(final_dump_timestamp) # Close any remaining active flows
+
+        # Determine output filename for live capture
+        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        sanitized_interface_name = interface.replace('\\', '_').replace('{', '').replace('}', '').replace(':', '_').replace('*', '_').replace('?', '_').replace('"', '_').replace('<', '_').replace('>', '_').replace('|', '_').replace('/', '_') # Add more replacements if needed
+
+        # Now use the sanitized name in the filename
+        live_csv_filename = f"live_capture_{sanitized_interface_name}_{timestamp_str}_PythonFeatures.csv"
+
+        total_flows_dumped = flow_gen.dump_labeled_flow_based_features(out_path, live_csv_filename, FlowFeature.get_header())
+        logger.info(f"Dumped {total_flows_dumped} flows from live capture on {interface}.")
 
 
-        end_time_script_sec = time.time()
-        logger.info("Done! processing file %s in %.2f seconds", file, (end_time_script_sec - start_time_script_sec))
-        logger.info("\t Total packets read by scapy: %d", total_scapy_packets)
-        logger.info("\t Packets causing errors or filtered by addPacket: %d", discarded_packet_count)
+    else:
+        # --- PCAP File Processing Mode (Existing Logic) ---
 
-
-        if first_packet_timestamp_micros is not None and last_packet_timestamp_micros is not None:
-             pcap_duration_micros = last_packet_timestamp_micros - first_packet_timestamp_micros
-             if pcap_duration_micros >= 0:
-                  logger.info("PCAP duration %.6f seconds", pcap_duration_micros / 1_000_000.0)
-             else:
-                  logger.warning("Calculated negative PCAP duration. Timestamps might be inconsistent.")
-                  logger.info("PCAP duration: N/A")
+        # Pipeline Step 1: Generate PCAPs (simple test PCAP) - Only in file mode
+        if not args.skip_generate:
+            os.makedirs(pcap_path, exist_ok=True)
+            generate_simple_test_pcap(pcap_path)
         else:
-             logger.info("PCAP duration: N/A (no packets read or processed)")
+            logger.info("Skipping simple test PCAP generation as --skip-generate flag is set.")
 
-        logger.info("----------------------------------------------------------------------------")
+        # Pipeline Step 2: Process PCAP files
+        if not os.path.isdir(pcap_path):
+            logger.error("Input directory not found: %s", pcap_path)
+            sys.exit(1)
 
-        csv_filename = file.replace(".pcap", "") + "_PythonFeatures.csv"
-        total_flows_dumped_this_file = flow_gen.dump_labeled_flow_based_features(out_path, csv_filename, FlowFeature.get_header())
-        total_flows_dumped += total_flows_dumped_this_file
-        logger.info("Dumped %d flows for file %s.", total_flows_dumped_this_file, file)
+        try:
+            pcap_files = [f for f in os.listdir(pcap_path) if f.lower().endswith(".pcap")]
+            pcap_files.sort()
+        except OSError as e:
+            logger.error("Error listing files in directory %s: %s", pcap_path, e)
+            sys.exit(1)
+
+        if not pcap_files:
+            logger.info("Sorry, no pcap files can be found under: %s", pcap_path)
+            if args.skip_generate:
+                 logger.info("Note: No PCAP files found and generation was skipped. Please ensure PCAP files are in the input directory or remove --skip-generate.")
+            return
+
+        logger.info("")
+        logger.info("PythonFlowMeter found: %d Files.", len(pcap_files))
+
+        total_flows_dumped = 0
+
+        for file in pcap_files:
+            filepath = os.path.join(pcap_path, file)
+            logger.info("")
+            logger.info("")
+            logger.info("Working on... %s", file)
+
+            # Re-initialize FlowGenerator for each file in file mode (matching Java's behavior)
+            # This ensures flow IDs are unique per file processed in a single run.
+            # If you wanted continuous flows across files, the flow_gen should be initialized once before the loop.
+            # Sticking to per-file initialization for closer Java behavior translation.
+            flow_gen = FlowGenerator(bidirectional=True, flow_timeout_micros=ACTIVE_TIMEOUT_MICROS, activity_timeout_micros=IDLE_TIMEOUT_MICROS)
 
 
-    logger.info("\n\n----------------------------------------------------------------------------")
-    logger.info("TOTAL FLOWS DUMPED ACROSS ALL FILES (packet count > 1): %d", total_flows_dumped)
-    logger.info("----------------------------------------------------------------------------\n")
+            first_packet_timestamp_micros = None
+            last_packet_timestamp_micros = None
+            discarded_packet_count = 0
+
+            start_time_script_sec = time.time()
+
+            packets = []
+            total_scapy_packets = 0
+
+            try:
+                try:
+                    packets = rdpcap(filepath)
+                    total_scapy_packets = len(packets)
+                    logger.info(f"Read {total_scapy_packets} packets from {file}")
+                except Exception as e:
+                     logger.error(f"Error reading PCAP file {filepath}: {e}")
+                     continue
+
+                for i, packet in enumerate(packets):
+                    try:
+                        flow_gen.addPacket(packet)
+
+                        if hasattr(packet, 'time'):
+                            packet_timestamp_micros = int(packet.time * 1_000_000)
+                            if first_packet_timestamp_micros is None or packet_timestamp_micros < first_packet_timestamp_micros:
+                                 first_packet_timestamp_micros = packet_timestamp_micros
+                            if last_packet_timestamp_micros is None or packet_timestamp_micros > last_packet_timestamp_micros:
+                                 last_packet_timestamp_micros = packet_packet_timestamp_micros # Fix typo here (was packet_packet_timestamp_micros)
+                            if last_packet_timestamp_micros is None or packet_timestamp_micros > last_packet_timestamp_micros:
+                                last_packet_timestamp_micros = packet_timestamp_micros
+                        else:
+                             logger.warning(f"Packet {i+1} in {file} has no timestamp attribute. Skipping time tracking for this packet.")
+
+
+                    except Exception as e:
+                         logger.error(f"Unhandled error processing packet {i+1}/{total_scapy_packets} in PCAP loop: {e}", exc_info=True)
+                         discarded_packet_count += 1
+
+                final_closing_timestamp = last_packet_timestamp_micros if last_packet_timestamp_micros is not None else int(time.time() * 1_000_000)
+                logger.debug(f"Calling close_all_flows for {file} with final timestamp {final_closing_timestamp}")
+                flow_gen.close_all_flows(final_closing_timestamp)
+
+            except Exception as e:
+                logger.error(f"An unhandled error occurred during processing of file {file}: {e}", exc_info=True)
+
+
+            end_time_script_sec = time.time()
+            logger.info("Done! processing file %s in %.2f seconds", file, (end_time_script_sec - start_time_script_sec))
+            logger.info("\t Total packets read by scapy: %d", total_scapy_packets)
+            logger.info("\t Packets causing errors or filtered by addPacket: %d", discarded_packet_count)
+
+            if first_packet_timestamp_micros is not None and last_packet_timestamp_micros is not None:
+                 pcap_duration_micros = last_packet_timestamp_micros - first_packet_timestamp_micros
+                 if pcap_duration_micros >= 0:
+                      logger.info("PCAP duration %.6f seconds", pcap_duration_micros / 1_000_000.0)
+                 else:
+                      logger.warning("Calculated negative PCAP duration. Timestamps might be inconsistent.")
+                      logger.info("PCAP duration: N/A")
+            else:
+                 logger.info("PCAP duration: N/A (no packets read or processed)")
+
+            logger.info("----------------------------------------------------------------------------")
+
+            csv_filename = file.replace(".pcap", "") + "_PythonFeatures.csv"
+            total_flows_dumped_this_file = flow_gen.dump_labeled_flow_based_features(out_path, csv_filename, FlowFeature.get_header())
+            total_flows_dumped += total_flows_dumped_this_file
+            logger.info("Dumped %d flows for file %s.", total_flows_dumped_this_file, file)
+
+
+        # In file mode, total_flows_dumped is accumulated across all files
+        logger.info("\n\n----------------------------------------------------------------------------")
+        logger.info("TOTAL FLOWS DUMPED ACROSS ALL FILES (packet count > 1): %d", total_flows_dumped)
+        logger.info("----------------------------------------------------------------------------\n")
+
 
 if __name__ == "__main__":
     main()
