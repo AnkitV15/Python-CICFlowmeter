@@ -1,6 +1,8 @@
 import time
+import argparse
 import random
 import os
+import re # Import the regex module for sanitization (still needed for filename sanitization if we add other features later, but not strictly for this version)
 from scapy.all import IP, TCP, UDP, Raw, wrpcap, IPv6, Packet
 
 # Define some common IPs and ports for variety
@@ -15,9 +17,9 @@ HTTP_PORT = 80
 HTTPS_PORT = 443
 DNS_PORT = 53
 
-# Output directory for generated pcaps
-OUTPUT_DIR = "data/in"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+# Default output directory for generated pcaps
+DEFAULT_OUTPUT_DIR = "data/in"
+
 
 def generate_flow(flow_type="tcp_short", num_packets=10, ip_version="ipv4", src_ip=None, dst_ip=None, src_port=None, dst_port=None, start_time=None, iat_mean_micros=1000, payload_size_mean=50, include_flags=True):
     """Generates packets for a single flow."""
@@ -58,22 +60,22 @@ def generate_flow(flow_type="tcp_short", num_packets=10, ip_version="ipv4", src_
             elif i == 1 and flow_type != "tcp_syn_flood": # Second packet (simulate handshake response)
                  # If bidirectional, the second packet is likely backward SYN-ACK
                  if not is_forward:
-                      flags = "SA" # SYN-ACK
-                      # Simplified ack/seq update
-                      temp_ack = tcp_seq + 1
-                      tcp_seq = tcp_ack
-                      tcp_ack = temp_ack
+                     flags = "SA" # SYN-ACK
+                     # Simplified ack/seq update
+                     temp_ack = tcp_seq + 1
+                     tcp_seq = tcp_ack
+                     tcp_ack = temp_ack
                  else:
-                      flags = "A" # ACK
-                      tcp_ack = tcp_seq + payload_size # Acknowledge data from previous packet
+                     flags = "A" # ACK
+                     tcp_ack = tcp_seq + payload_size # Acknowledge data from previous packet
 
             elif i == num_packets - 1 and include_flags: # Last packet
                  if flow_type == "tcp_fin_terminate":
-                      flags = "FA" # FIN-ACK
+                     flags = "FA" # FIN-ACK
                  elif flow_type == "tcp_rst_terminate":
-                      flags = "R" # RST
+                     flags = "R" # RST
                  else:
-                      flags = "A" # Standard ACK
+                     flags = "A" # Standard ACK
                  tcp_ack = tcp_seq + payload_size # Acknowledge data from previous packet
 
             else:
@@ -92,14 +94,14 @@ def generate_flow(flow_type="tcp_short", num_packets=10, ip_version="ipv4", src_
             transport_layer = UDP(sport=src_p, dport=dst_p)
 
         if transport_layer:
-            # Add payload if size > 0
-            if payload_size > 0:
+             # Add payload if size > 0
+             if payload_size > 0:
                  packet = ip_layer / transport_layer / Raw(load='\x00' * payload_size)
-            else:
+             else:
                  packet = ip_layer / transport_layer
         else:
-             # Handle other protocols if needed, for this example, we only generate TCP/UDP
-             continue # Skip if no transport layer could be created
+              # Handle other protocols if needed, for this example, we only generate TCP/UDP
+              continue # Skip if no transport layer could be created
 
 
         # Manually set packet timestamp in seconds (scapy requires float)
@@ -117,8 +119,9 @@ def generate_flow(flow_type="tcp_short", num_packets=10, ip_version="ipv4", src_
 
     return packets
 
-def generate_pcap_file(filename, num_flows, packets_per_flow_range, flow_iat_mean_millis=10, flow_types=["tcp_short", "udp_long", "tcp_bidirectional"]):
-    """Generates a pcap file with multiple flows."""
+# Added output_dir parameter
+def generate_pcap_file(output_dir, filename, num_flows, packets_per_flow_range, flow_iat_mean_millis=10, flow_types=["tcp_short", "udp_long", "tcp_bidirectional"]):
+    """Generates a pcap file with multiple simulated flows."""
     all_packets = []
     current_global_time = time.time() # Start time for the pcap
 
@@ -150,43 +153,18 @@ def generate_pcap_file(filename, num_flows, packets_per_flow_range, flow_iat_mea
     # Shuffle packets to simulate real-world interleaving of flows
     random.shuffle(all_packets)
 
-    filepath = os.path.join(OUTPUT_DIR, filename)
+    # Use the passed output_dir
+    filepath = os.path.join(output_dir, filename)
     wrpcap(filepath, all_packets)
     print(f"Generated {len(all_packets)} packets in {filepath}")
 
-# --- Generate Sample PCAP Files ---
 
-# Example 1: Basic mixed traffic
-generate_pcap_file(
-    "mixed_traffic.pcap",
-    num_flows=50,
-    packets_per_flow_range=(5, 50),
-    flow_iat_mean_millis=50,
-    flow_types=["tcp_short", "udp_long", "tcp_bidirectional", "udp_bidirectional"]
-)
+# Removed capture_live_traffic function
 
-# Example 2: Traffic with FIN and RST terminations
-generate_pcap_file(
-    "terminated_flows.pcap",
-    num_flows=30,
-    packets_per_flow_range=(5, 30),
-    flow_iat_mean_millis=100,
-    flow_types=["tcp_fin_terminate", "tcp_rst_terminate", "tcp_bidirectional"]
-)
 
-# Example 3: Longer flows to test active/idle times
-generate_pcap_file(
-    "long_flows_with_idle.pcap",
-    num_flows=20,
-    packets_per_flow_range=(50, 200), # More packets per flow
-    flow_iat_mean_millis=200,
-    flow_types=["tcp_bidirectional", "udp_long"]
-)
-
-# Example 4: Traffic with potential bulk characteristics (more packets with payload close together)
-# This requires more careful IAT control and payload size consistency.
-# Simplified simulation: bursts of packets with smaller IAT.
+# Added output_dir parameter
 def generate_bulk_flow(num_packets=100, ip_version="ipv4", start_time=None):
+    """Generates packets for a single bulk flow (used internally by generate_pcap_bulk)."""
     packets = []
     if start_time is None:
         start_time = time.time()
@@ -250,7 +228,9 @@ def generate_bulk_flow(num_packets=100, ip_version="ipv4", start_time=None):
     packets.sort(key=lambda pkt: pkt.time)
     return packets
 
-def generate_pcap_bulk(filename, num_flows=10, packets_per_flow=100):
+
+# Added output_dir parameter
+def generate_pcap_bulk(output_dir, filename, num_flows=10, packets_per_flow=100):
     """Generates a pcap file specifically designed to create flows with bulk characteristics."""
     all_packets = []
     current_global_time = time.time()
@@ -273,12 +253,67 @@ def generate_pcap_bulk(filename, num_flows=10, packets_per_flow=100):
     # Still good practice to sort by time before writing
     all_packets.sort(key=lambda pkt: pkt.time)
 
-    filepath = os.path.join(OUTPUT_DIR, filename)
+    # Use the passed output_dir
+    filepath = os.path.join(output_dir, filename)
     wrpcap(filepath, all_packets)
     print(f"Generated {len(all_packets)} packets in {filepath}")
 
-# Example 5: Traffic with potential bulk/subflow characteristics
-generate_pcap_bulk("bulk_subflow_traffic.pcap", num_flows=15, packets_per_flow=150)
+
+# --- Main script execution ---
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Generate simulated network traffic into PCAP files.")
+    # Removed --interface, --sniff-timeout, --sniff-count arguments
+    # Argument for specifying the output directory
+    parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR, help=f"Output directory for generated pcaps (default: {DEFAULT_OUTPUT_DIR})")
 
 
-print(f"\nSample pcap files generated in the '{OUTPUT_DIR}' directory.")
+    args = parser.parse_args()
+
+    # Ensure the output directory exists
+    os.makedirs(args.output_dir, exist_ok=True)
+
+
+    # Removed the if/else block for live capture vs simulation
+    # Now always runs simulated PCAP generation examples
+    print("Generating sample simulated PCAP files.")
+    # Example 1: Basic mixed traffic
+    generate_pcap_file(
+        args.output_dir, # Pass the output directory
+        "mixed_traffic.pcap",
+        num_flows=50,
+        packets_per_flow_range=(5, 50),
+        flow_iat_mean_millis=50,
+        flow_types=["tcp_short", "udp_long", "tcp_bidirectional", "udp_bidirectional"]
+    )
+
+    # Example 2: Traffic with FIN and RST terminations
+    generate_pcap_file(
+        args.output_dir, # Pass the output directory
+        "terminated_flows.pcap",
+        num_flows=30,
+        packets_per_flow_range=(5, 30),
+        flow_iat_mean_millis=100,
+        flow_types=["tcp_fin_terminate", "tcp_rst_terminate", "tcp_bidirectional"]
+    )
+
+    # Example 3: Longer flows to test active/idle times
+    generate_pcap_file(
+        args.output_dir, # Pass the output directory
+        "long_flows_with_idle.pcap",
+        num_flows=20,
+        packets_per_flow_range=(50, 200), # More packets per flow
+        flow_iat_mean_millis=200,
+        flow_types=["tcp_bidirectional", "udp_long"]
+    )
+
+    # Example 5: Traffic with potential bulk/subflow characteristics
+    generate_pcap_bulk(
+        args.output_dir, # Pass the output directory
+        "bulk_subflow_traffic.pcap",
+        num_flows=15,
+        packets_per_flow=150
+    )
+
+
+    print(f"\nSample pcap files generated in the '{args.output_dir}' directory.")
+
