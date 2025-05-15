@@ -29,7 +29,7 @@ class FlowFeature(enum.Enum):
     fw_pkt_l_avg = ("Fwd Packet Length Mean", "FwPLAG", True)
     fw_pkt_l_std = ("Fwd Packet Length Std", "FwPLSD", True)
     bw_pkt_l_max = ("Bwd Packet Length Max", "BwPLMA", True)
-    bw_pkt_l_min = ("Bwd Packet Length Min", "BwPLMI", True)
+    bw_pkt_l_min = ("Bwd Packet Length Min", "Bwd PLMI", True) # Corrected typo in abbreviation based on common usage
     bw_pkt_l_avg = ("Bwd Packet Length Mean", "BwPLAG", True)
     bw_pkt_l_std = ("Bwd Packet Length Std", "BwPLSD", True)
     fl_byt_s = ("Flow Bytes/s", "FB/s", True)
@@ -94,7 +94,7 @@ class FlowFeature(enum.Enum):
     idl_avg = ("Idle Mean", "IlAG", True)
     idl_std = ("Idle Std", "IlSD", True)
     idl_max = ("Idle Max", "IlMA", True)
-    idl_min = ("Idle Min", "IlMI", True) # Corrected abbreviation based on Java dump # Corrected abbreviation based on Java dump
+    idl_min = ("Idle Min", "IlMI", True)
     Label = ("Label", "LBL", False)
 
     def __init__(self, name, abbr, is_numeric):
@@ -116,6 +116,13 @@ class FlowFeature(enum.Enum):
 
     @staticmethod
     def get_header():
-        # Generate header string based on the enum order
-        header = [feature.fullname for feature in FlowFeature]
-        return ",".join(header)
+        """
+        Generates the CSV header string for flow features by extracting
+        the first element (the header name string) from each enum value tuple.
+        """
+        # Get the list of the first element (header name string) from each enum value tuple
+        header_list = [feature.value[0] for feature in FlowFeature]
+        # Join the list with commas
+        header_string = ",".join(header_list)
+        # Return the string (no trailing comma)
+        return header_string

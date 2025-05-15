@@ -925,185 +925,275 @@ class BasicFlow:
         dump = []
         separator = ","
 
-        # Append features in the order of the Java dump method
-        # Using str() to ensure all values are converted to strings
+        # Add debug log at the start
+        logger.debug(f"Starting dumpFlowBasedFeaturesEx for flow {self.getFlowId()} (object id: {id(self)})")
+
         try:
-             dump.append(str(self.getFlowId())) # 1
-             dump.append(str(self.getSrc())) # 2
-             dump.append(str(self.getSrcPort())) # 3
-             dump.append(str(self.getDst())) # 4
-             dump.append(str(self.getDstPort())) # 5
-             dump.append(str(self.getProtocol())) # 6
+            # Append features in the order of the Java dump method
+            # Using str() to ensure all values are converted to strings
 
-             # Format timestamp like Java: "dd/MM/yyyy hh:mm:ss a" (AM/PM)
-             # Java's timestampInMicros / 1000L gives milliseconds, then formatted
-             timestamp_micros = self.getFlowStartTime()
-             # Use a default timestamp string if flowStartTime is zero or causes an error
-             if timestamp_micros <= 0:
-                  formatted_timestamp = "00/00/0000 12:00:00 AM" # Default or error indicator
-                  logger.warning(f"Flow {self.getFlowId()} has invalid start timestamp: {timestamp_micros}. Using default string.")
-             else:
-                  try:
-                       timestamp_ms = timestamp_micros // 1000
-                       # Convert milliseconds to seconds for Python's fromtimestamp
-                       timestamp_sec = timestamp_ms / 1000.0
-                       # Format using datetime (%I for 12-hour, %p for AM/PM)
-                       formatted_timestamp = datetime.fromtimestamp(timestamp_sec).strftime("%d/%m/%Y %I:%M:%S %p")
-                  except (ValueError, OSError) as e:
-                       logger.warning(f"Could not format timestamp {timestamp_micros} for flow {self.getFlowId()}: {e}. Using default string.")
-                       formatted_timestamp = "00/00/0000 12:00:00 AM" # Default or error indicator
+            # Feature 1-6
+            dump.append(str(self.getFlowId()))
+            logger.debug(f"Dump size after FlowId: {len(dump)}") # Add debug log
+            dump.append(str(self.getSrc()))
+            logger.debug(f"Dump size after Src IP: {len(dump)}") # Add debug log
+            dump.append(str(self.getSrcPort()))
+            logger.debug(f"Dump size after Src Port: {len(dump)}") # Add debug log
+            dump.append(str(self.getDst()))
+            logger.debug(f"Dump size after Dst IP: {len(dump)}") # Add debug log
+            dump.append(str(self.getDstPort()))
+            logger.debug(f"Dump size after Dst Port: {len(dump)}") # Add debug log
+            dump.append(str(self.getProtocol()))
+            logger.debug(f"Dump size after Protocol: {len(dump)}") # Add debug log
+
+            # Feature 7 (Timestamp)
+            timestamp_micros = self.getFlowStartTime()
+            # Initialize formatted_timestamp with a default value
+            formatted_timestamp = "00/00/0000 12:00:00 AM" # Default or error indicator
+
+            if timestamp_micros > 0: # Changed condition to only process valid timestamps
+                 try:
+                      timestamp_ms = timestamp_micros // 1000
+                      # Convert milliseconds to seconds for Python's fromtimestamp
+                      timestamp_sec = timestamp_ms / 1000.0
+                      # Format using datetime (%I for 12-hour, %p for AM/PM)
+                      formatted_timestamp = datetime.fromtimestamp(timestamp_sec).strftime("%d/%m/%Y %I:%M:%S %p")
+                 except (ValueError, OSError) as e:
+                      logger.warning(f"Could not format timestamp {timestamp_micros} for flow {getattr(self, 'flowId', 'UnknownID')}: {e}. Using default string.")
+            else:
+                 logger.warning(f"Flow {getattr(self, 'flowId', 'UnknownID')} has invalid start timestamp: {timestamp_micros}. Using default string.")
 
 
-             dump.append(formatted_timestamp) # 7
+            dump.append(formatted_timestamp) # 7
+            logger.debug(f"Dump size after Timestamp: {len(dump)}") # Add debug log
 
 
-             dump.append(str(self.getFlowDuration())) # 8
+            # Feature 8
+            dump.append(str(self.getFlowDuration()))
+            logger.debug(f"Dump size after Flow Duration: {len(dump)}") # Add debug log
 
-             dump.append(str(self.getTotalFwdPackets())) # 9
-             dump.append(str(self.getTotalBackwardPackets())) # 10
-             dump.append(str(self.getTotalLengthofFwdPackets())) # 11
-             dump.append(str(self.getTotalLengthofBwdPackets())) # 12
+            # Features 9-12
+            dump.append(str(self.getTotalFwdPackets()))
+            logger.debug(f"Dump size after Total Fwd Pkts: {len(dump)}") # Add debug log
+            dump.append(str(self.getTotalBackwardPackets()))
+            logger.debug(f"Dump size after Total Bwd Pkts: {len(dump)}") # Add debug log
+            dump.append(str(self.getTotalLengthofFwdPackets()))
+            logger.debug(f"Dump size after Total Length Fwd: {len(dump)}") # Add debug log
+            dump.append(str(self.getTotalLengthofBwdPackets()))
+            logger.debug(f"Dump size after Total Length Bwd: {len(dump)}") # Add debug log
 
-             # Fwd Packet Length Stats (Max, Min, Mean, Std Dev) - Features 13-16
-             if self.getTotalFwdPackets() > 0:
+
+            # Fwd Packet Length Stats (Max, Min, Mean, Std Dev) - Features 13-16
+            if self.getTotalFwdPackets() > 0:
                  dump.append(str(self.getFwdPacketLengthMax()))
                  dump.append(str(self.getFwdPacketLengthMin()))
                  dump.append(str(self.getFwdPacketLengthMean()))
                  dump.append(str(self.getFwdPacketLengthStd()))
-             else:
-                 dump.extend(["0.0"] * 4) # Use 0.0 for floating point zeros
+                 logger.debug(f"Dump size after Fwd Pkt Len Stats (>0): {len(dump)}") # Add debug log
+            else:
+                 dump.extend(["0.0"] * 4)
+                 logger.debug(f"Dump size after Fwd Pkt Len Stats (<=0): {len(dump)}") # Add debug log
 
-             # Bwd Packet Length Stats (Max, Min, Mean, Std Dev) - Features 17-20
-             if self.getTotalBackwardPackets() > 0:
+
+            # Bwd Packet Length Stats (Max, Min, Mean, Std Dev) - Features 17-20
+            if self.getTotalBackwardPackets() > 0:
                  dump.append(str(self.getBwdPacketLengthMax()))
                  dump.append(str(self.getBwdPacketLengthMin()))
                  dump.append(str(self.getBwdPacketLengthMean()))
                  dump.append(str(self.getBwdPacketLengthStd()))
-             else:
-                 dump.extend(["0.0"] * 4) # Use 0.0 for floating point zeros
+                 logger.debug(f"Dump size after Bwd Pkt Len Stats (>0): {len(dump)}") # Add debug log
+            else:
+                 dump.extend(["0.0"] * 4)
+                 logger.debug(f"Dump size after Bwd Pkt Len Stats (<=0): {len(dump)}") # Add debug log
 
 
-             dump.append(str(self.getFlowBytesPerSec())) # 21
-             dump.append(str(self.getFlowPacketsPerSec())) # 22
+            # Features 21-26
+            dump.append(str(self.getFlowBytesPerSec()))
+            logger.debug(f"Dump size after Flow Bytes/s: {len(dump)}") # Add debug log
+            dump.append(str(self.getFlowPacketsPerSec()))
+            logger.debug(f"Dump size after Flow Packets/s: {len(dump)}") # Add debug log
+            dump.append(str(self.getFlowIATMean()))
+            logger.debug(f"Dump size after Flow IAT Mean: {len(dump)}") # Add debug log
+            dump.append(str(self.getFlowIATStd()))
+            logger.debug(f"Dump size after Flow IAT Std: {len(dump)}") # Add debug log
+            dump.append(str(self.getFlowIATMax()))
+            logger.debug(f"Dump size after Flow IAT Max: {len(dump)}") # Add debug log
+            dump.append(str(self.getFlowIATMin()))
+            logger.debug(f"Dump size after Flow IAT Min: {len(dump)}") # Add debug log
 
-             dump.append(str(self.getFlowIATMean())) # 23
-             dump.append(str(self.getFlowIATStd())) # 24
-             dump.append(str(self.getFlowIATMax())) # 25
-             dump.append(str(self.getFlowIATMin())) # 26
 
-             # Fwd IAT Stats (Total, Mean, Std Dev, Max, Min) - Features 27-31
-             # Note: Java checks forward.size() > 1 for IAT stats
-             if len(self.forward) > 1:
+            # Fwd IAT Stats (Total, Mean, Std Dev, Max, Min) - Features 27-31
+            if len(self.forward) > 1:
                  dump.append(str(self.getFwdIATTotal()))
                  dump.append(str(self.getFwdIATMean()))
                  dump.append(str(self.getFwdIATStd()))
                  dump.append(str(self.getFwdIATMax()))
                  dump.append(str(self.getFwdIATMin()))
-             else:
-                 dump.extend(["0.0"] * 5) # Use 0.0 for floating point zeros
+                 logger.debug(f"Dump size after Fwd IAT Stats (>1): {len(dump)}") # Add debug log
+            else:
+                 dump.extend(["0.0"] * 5)
+                 logger.debug(f"Dump size after Fwd IAT Stats (<=1): {len(dump)}") # Add debug log
 
 
-             # Bwd IAT Stats (Total, Mean, Std Dev, Max, Min) - Features 32-36
-             # Note: Java checks backward.size() > 1 for IAT stats
-             if len(self.backward) > 1:
+            # Bwd IAT Stats (Total, Mean, Std Dev, Max, Min) - Features 32-36
+            if len(self.backward) > 1:
                  dump.append(str(self.getBwdIATTotal()))
                  dump.append(str(self.getBwdIATMean()))
                  dump.append(str(self.getBwdIATStd()))
                  dump.append(str(self.getBwdIATMax()))
                  dump.append(str(self.getBwdIATMin()))
-             else:
-                 dump.extend(["0.0"] * 5) # Use 0.0 for floating point zeros
+                 logger.debug(f"Dump size after Bwd IAT Stats (>1): {len(dump)}") # Add debug log
+            else:
+                 dump.extend(["0.0"] * 5)
+                 logger.debug(f"Dump size after Bwd IAT Stats (<=1). Dump size: {len(dump)}") # Add debug log
 
 
-             dump.append(str(self.getFwdPSHFlags())) # 37
-             dump.append(str(self.getBwdPSHFlags())) # 38
-             dump.append(str(self.getFwdURGFlags())) # 39
-             dump.append(str(self.getBwdURGFlags())) # 40
-
-             dump.append(str(self.getFwdHeaderLength())) # 41
-             dump.append(str(self.getBwdHeaderLength())) # 42
-             dump.append(str(self.getfPktsPerSecond())) # 43
-             dump.append(str(self.getbPktsPerSecond())) # 44
-
-             # Packet Length Stats (Min, Max, Mean, Std Dev, Variance) - Features 45-49
-             all_packet_lengths = self.fwdPktStats + self.bwdPktStats
-             if all_packet_lengths: # Check if there are any packets with payload
-                 dump.append(str(self.getPacketLengthMin()))
-                 dump.append(str(self.getPacketLengthMax()))
-                 dump.append(str(self.getPacketLengthMean()))
-                 dump.append(str(self.getPacketLengthStd()))
-                 dump.append(str(self.getPacketLengthVariance()))
-             else:
-                  dump.extend(["0.0"] * 5) # Use 0.0 for floating point zeros
+            # Features 37-40
+            dump.append(str(self.getFwdPSHFlags()))
+            logger.debug(f"Dump size after Fwd PSH: {len(dump)}") # Add debug log
+            dump.append(str(self.getBwdPSHFlags()))
+            logger.debug(f"Dump size after Bwd PSH: {len(dump)}") # Add debug log
+            dump.append(str(self.getFwdURGFlags()))
+            logger.debug(f"Dump size after Fwd URG: {len(dump)}") # Add debug log
+            dump.append(str(self.getBwdURGFlags()))
+            logger.debug(f"Dump size after Bwd URG: {len(dump)}") # Add debug log
 
 
-             # Global Flag Counts (FIN, SYN, RST, PSH, ACK, URG, CWR, ECE) - Features 50-57
-             dump.append(str(self.getFINFlagCount())) # 50
-             dump.append(str(self.getSYNFlagCount())) # 51
-             dump.append(str(self.getRSTFlagCount())) # 52
-             dump.append(str(self.getPSHFlagCount())) # 53
-             dump.append(str(self.getACKFlagCount())) # 54
-             dump.append(str(self.getURGFlagCount())) # 55
-             dump.append(str(self.getCWRFlagCount())) # 56
-             dump.append(str(self.getECEFlagCount())) # 57
-
-             dump.append(str(self.getDownUpRatio())) # 58
-             dump.append(str(self.getAveragePacketSize())) # 59
-             dump.append(str(self.fAvgSegmentSize())) # 60
-             dump.append(str(self.bAvgSegmentSize())) # 61
-             # Feature 62 is a duplicate of 41 (Fwd Header Length) based on the comment in FlowFeature.java,
-             # but the dump method explicitly includes it. Replicating the dump order.
-             dump.append(str(self.getFwdHeaderLength())) # 62 (Duplicate)
+            # Features 41-44
+            dump.append(str(self.getFwdHeaderLength()))
+            logger.debug(f"Dump size after Fwd Header Len: {len(dump)}") # Add debug log
+            dump.append(str(self.getBwdHeaderLength()))
+            logger.debug(f"Dump size after Bwd Header Len: {len(dump)}") # Add debug log
+            dump.append(str(self.getfPktsPerSecond()))
+            logger.debug(f"Dump size after Fwd Pkts/s: {len(dump)}") # Add debug log
+            dump.append(str(self.getbPktsPerSecond()))
+            logger.debug(f"Dump size after Bwd Pkts/s: {len(dump)}") # Add debug log
 
 
-             # Bulk Features (Fwd Avg Bytes/Bulk, Fwd Avg Packets/Bulk, Fwd Avg Bulk Rate,
-             #               Bwd Avg Bytes/Bulk, Bwd Avg Packets/Bulk, Bwd Avg Bulk Rate) - Features 63-68
-             dump.append(str(self.fAvgBytesPerBulk())) # 63
-             dump.append(str(self.fAvgPacketsPerBulk())) # 64
-             dump.append(str(self.fAvgBulkRate())) # 65
-             dump.append(str(self.bAvgBytesPerBulk())) # 66
-             dump.append(str(self.bAvgPacketsPerBulk())) # 67
-             dump.append(str(self.bAvgBulkRate())) # 68
+            # Packet Length Stats (Min, Max, Mean, Std Dev, Variance) - Features 45-49
+            # Assuming getters handle empty cases and return single values (e.g., 0.0)
+            dump.append(str(self.getPacketLengthMin()))
+            logger.debug(f"Dump size after Pkt Len Min: {len(dump)}") # Add debug log
+            dump.append(str(self.getPacketLengthMax()))
+            logger.debug(f"Dump size after Pkt Len Max: {len(dump)}") # Add debug log
+            dump.append(str(self.getPacketLengthMean()))
+            logger.debug(f"Dump size after Pkt Len Mean: {len(dump)}") # Add debug log
+            dump.append(str(self.getPacketLengthStd()))
+            logger.debug(f"Dump size after Pkt Len Std: {len(dump)}") # Add debug log
+            dump.append(str(self.getPacketLengthVariance()))
+            logger.debug(f"Dump size after Pkt Len Variance: {len(dump)}") # Add debug log
 
-             # Subflow Features (Fwd Packets, Fwd Bytes, Bwd Packets, Bwd Bytes) - Features 69-72
-             # Note: These are average packets/bytes *per subflow state count* based on the Java getters.
-             dump.append(str(self.getSflow_fpackets())) # 69
-             dump.append(str(self.getSflow_fbytes())) # 70
-             dump.append(str(self.getSflow_bpackets())) # 71
-             dump.append(str(self.getSflow_bbytes())) # 72
 
-             dump.append(str(self.getInit_Win_bytes_forward())) # 73
-             dump.append(str(self.getInit_Win_bytes_backward())) # 74
-             dump.append(str(self.getAct_data_pkt_forward())) # 75
-             dump.append(str(self.getMin_seg_size_forward())) # 76
+            # Features 50-57
+            dump.append(str(self.getFINFlagCount()))
+            logger.debug(f"Dump size after FIN: {len(dump)}") # Add debug log
+            dump.append(str(self.getSYNFlagCount()))
+            logger.debug(f"Dump size after SYN: {len(dump)}") # Add debug log
+            dump.append(str(self.getRSTFlagCount()))
+            logger.debug(f"Dump size after RST: {len(dump)}") # Add debug log
+            dump.append(str(self.getPSHFlagCount()))
+            logger.debug(f"Dump size after PSH: {len(dump)}") # Add debug log
+            dump.append(str(self.getACKFlagCount()))
+            logger.debug(f"Dump size after ACK: {len(dump)}") # Add debug log
+            dump.append(str(self.getURGFlagCount()))
+            logger.debug(f"Dump size after URG: {len(dump)}") # Add debug log
+            dump.append(str(self.getCWRFlagCount()))
+            logger.debug(f"Dump size after CWR: {len(dump)}") # Add debug log
+            dump.append(str(self.getECEFlagCount()))
+            logger.debug(f"Dump size after ECE: {len(dump)}") # Add debug log
 
-             # Active Time Stats (Mean, Std Dev, Max, Min) - Features 77-80
-             if self.flowActive: # Check if there are any active periods recorded
-                 dump.append(str(statistics.mean(self.flowActive))) # Use statistics directly if getter has issues
+
+            # Features 58-62
+            dump.append(str(self.getDownUpRatio()))
+            logger.debug(f"Dump size after Down/Up Ratio: {len(dump)}") # Add debug log
+            dump.append(str(self.getAveragePacketSize()))
+            logger.debug(f"Dump size after Avg Pkt Size: {len(dump)}") # Add debug log
+            dump.append(str(self.fAvgSegmentSize()))
+            logger.debug(f"Dump size after Fwd Seg Size Avg: {len(dump)}") # Add debug log
+            dump.append(str(self.bAvgSegmentSize()))
+            logger.debug(f"Dump size after Bwd Seg Size Avg: {len(dump)}") # Add debug log
+            dump.append(str(self.getFwdHeaderLength())) # 62 (Duplicate)
+            logger.debug(f"Dump size after Fwd Header Len (Dup): {len(dump)}") # Add debug log
+
+
+            # Features 63-68 (Bulk Features)
+            dump.append(str(self.fAvgBytesPerBulk())) # 63
+            logger.debug(f"Dump size after Fwd Bytes/Bulk Avg: {len(dump)}") # Add debug log
+            dump.append(str(self.fAvgPacketsPerBulk())) # 64
+            logger.debug(f"Dump size after Fwd Packet/Bulk Avg: {len(dump)}") # Add debug log
+            dump.append(str(self.fAvgBulkRate())) # 65
+            logger.debug(f"Dump size after Fwd Bulk Rate Avg: {len(dump)}") # Add debug log
+            dump.append(str(self.bAvgBytesPerBulk())) # 66
+            logger.debug(f"Dump size after Bwd Bytes/Bulk Avg: {len(dump)}") # Add debug log
+            dump.append(str(self.bAvgPacketsPerBulk())) # 67
+            logger.debug(f"Dump size after Bwd Packet/Bulk Avg: {len(dump)}") # Add debug log
+            dump.append(str(self.bAvgBulkRate())) # 68
+            logger.debug(f"Dump size after Bwd Bulk Rate Avg: {len(dump)}") # Add debug log
+
+
+            # Features 69-72 (Subflow Features)
+            dump.append(str(self.getSflow_fpackets())) # 69
+            logger.debug(f"Dump size after Subflow Fwd Pkts: {len(dump)}") # Add debug log
+            dump.append(str(self.getSflow_fbytes())) # 70
+            logger.debug(f"Dump size after Subflow Fwd Bytes: {len(dump)}") # Add debug log
+            dump.append(str(self.getSflow_bpackets())) # 71
+            logger.debug(f"Dump size after Subflow Bwd Pkts: {len(dump)}") # Add debug log
+            dump.append(str(self.getSflow_bbytes())) # 72
+            logger.debug(f"Dump size after Subflow Bwd Bytes: {len(dump)}") # Add debug log
+
+
+            # Features 73-76
+            dump.append(str(self.getInit_Win_bytes_forward())) # 73
+            logger.debug(f"Dump size after FWD Init Win Bytes: {len(dump)}") # Add debug log
+            dump.append(str(self.getInit_Win_bytes_backward())) # 74
+            logger.debug(f"Dump size after Bwd Init Win Bytes: {len(dump)}") # Add debug log
+            dump.append(str(self.getAct_data_pkt_forward())) # 75
+            logger.debug(f"Dump size after Fwd Act Data Pkts: {len(dump)}") # Add debug log
+            dump.append(str(self.getMin_seg_size_forward())) # 76
+            logger.debug(f"Dump size after Fwd Seg Size Min: {len(dump)}") # Add debug log
+
+
+            # Active Time Stats (Mean, Std Dev, Max, Min) - Features 77-80
+            if self.flowActive:
+                 dump.append(str(statistics.mean(self.flowActive)))
                  dump.append(str(statistics.stdev(self.flowActive) if len(self.flowActive) > 1 else 0.0))
                  dump.append(str(max(self.flowActive)))
                  dump.append(str(min(self.flowActive)))
-             else:
-                 dump.extend(["0.0"] * 4) # Use 0.0 for floating point zeros
+                 logger.debug(f"Dump size after Active Stats (>0): {len(dump)}") # Add debug log
+            else:
+                 dump.extend(["0.0"] * 4)
+                 logger.debug(f"Dump size after Active Stats (<=0): {len(dump)}") # Add debug log
 
-             # Idle Time Stats (Mean, Std Dev, Max, Min) - Features 81-84
-             if self.flowIdle: # Check if there are any idle periods recorded
-                 dump.append(str(statistics.mean(self.flowIdle))) # Use statistics directly if getter has issues
+
+            # Idle Time Stats (Mean, Std Dev, Max, Min) - Features 81-84
+            if self.flowIdle:
+                 dump.append(str(statistics.mean(self.flowIdle)))
                  dump.append(str(statistics.stdev(self.flowIdle) if len(self.flowIdle) > 1 else 0.0))
                  dump.append(str(max(self.flowIdle)))
                  dump.append(str(min(self.flowIdle)))
-             else:
-                 dump.extend(["0.0"] * 4) # Use 0.0 for floating point zeros
+                 logger.debug(f"Dump size after Idle Stats (>0): {len(dump)}") # Add debug log
+            else:
+                 dump.extend(["0.0"] * 4)
+                 logger.debug(f"Dump size after Idle Stats (<=0): {len(dump)}") # Add debug log
 
 
-             dump.append(str(self.getLabel())) # 85 (Last feature)
+            # Feature 85 (Label)
+            dump.append(str(self.getLabel())) # 85 (Last feature)
+            logger.debug(f"Dump size after Label: {len(dump)}") # Add debug log
+
+
+            # --- Final Check ---
+            logger.debug(f"Final dump list size before return: {len(dump)}") # Add debug log
+
 
         except Exception as e:
              # Log error during dump, but try to produce a line with error indicator
              logger.error(f"Error during dumpFlowBasedFeaturesEx for flow {getattr(self, 'flowId', 'UnknownID')} (object id: {id(self)}): {e}", exc_info=True) # Log traceback
+             logger.debug(f"Dump list size at error point: {len(dump)}") # Add debug log
              # Fill the rest of the features with "ERROR" to maintain column count
              while len(dump) < 85:
-                 dump.append("ERROR")
+                  dump.append("ERROR")
+             logger.debug(f"Dump size after error filling: {len(dump)}") # Add debug log
 
 
         return separator.join(dump)

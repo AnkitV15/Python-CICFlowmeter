@@ -13,6 +13,40 @@ from datetime import datetime
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+
+# --- Logging Configuration ---
+# Define the log file path
+LOG_FILE = "flowmeter_debug.log"
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG, # Set the minimum logging level to DEBUG
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    # Remove handlers argument here to allow adding multiple handlers below
+    # handlers=[
+    #     logging.StreamHandler(sys.stdout) # Keep console output
+    # ]
+)
+
+# Get the root logger
+root_logger = logging.getLogger()
+
+# Clear any existing handlers (important if basicConfig was called before)
+if root_logger.hasHandlers():
+    root_logger.handlers.clear()
+
+# Create a console handler to output logs to the terminal
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.DEBUG) # Set level for console output
+console_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+root_logger.addHandler(console_handler)
+
+# Create a file handler to write logs to a file
+file_handler = logging.FileHandler(LOG_FILE, mode='w', encoding='utf-8') # 'w' mode overwrites the file each run
+file_handler.setLevel(logging.DEBUG) # Set level for file output
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+root_logger.addHandler(file_handler)
+
 # Import necessary components from their respective files and Scapy
 from flow_generator import FlowGenerator
 from constants import DEFAULT_PCAP_PATH, DEFAULT_OUT_PATH, ACTIVE_TIMEOUT_MICROS, IDLE_TIMEOUT_MICROS
@@ -73,6 +107,8 @@ def process_live_packet(packet, flow_generator, output_dir):
     except Exception as e:
          # Log any errors during packet processing but don't stop sniffing
          logger.error(f"Error processing live packet: {e}", exc_info=True)
+
+
 
 
 # --- Main Function with Live Capture Mode ---
@@ -241,10 +277,12 @@ def main():
 
                         if hasattr(packet, 'time'):
                             packet_timestamp_micros = int(packet.time * 1_000_000)
+
+                            # Update first packet timestamp
                             if first_packet_timestamp_micros is None or packet_timestamp_micros < first_packet_timestamp_micros:
                                  first_packet_timestamp_micros = packet_timestamp_micros
-                            if last_packet_timestamp_micros is None or packet_timestamp_micros > last_packet_timestamp_micros:
-                                 last_packet_timestamp_micros = packet_packet_timestamp_micros # Fix typo here (was packet_packet_timestamp_micros)
+
+                            # Update last packet timestamp
                             if last_packet_timestamp_micros is None or packet_timestamp_micros > last_packet_timestamp_micros:
                                 last_packet_timestamp_micros = packet_timestamp_micros
                         else:

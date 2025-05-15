@@ -1,2 +1,18 @@
-/__pycache__
+# Ignore Python cache directory
+__pycache__/
+
+# Ignore the Ml Model Directory
+ML-Model/
+
+# Ignore specific Python files
 flowmeter-dev.py
+isolated_sniff_test.py
+live_sniff_test_with_timeout.py
+test_sniff.py
+
+# Ignore Generated Files
+data/in/*
+data/out/*
+
+# Ignore all log files
+*.log
